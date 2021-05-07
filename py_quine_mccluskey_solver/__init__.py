@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import itertools
 import re
 from typing import cast, Callable, Optional
 
@@ -71,9 +72,9 @@ def solve_for_output_column(
         minterm_table, output_column_index=output_column_index
     )
 
-    implicants_n = len(implicants)
+    # implicants_n = len(implicants)
 
-    prime_implicants = []
+    prime_implicants: list[Implicant] = []
 
     while len(implicants) > 0:
         sorted_implicants, group_ranges = get_sorted_implicants_and_group_ranges(
@@ -84,11 +85,27 @@ def solve_for_output_column(
             implicants=sorted_implicants, group_ranges=group_ranges
         )
 
-        prime_implicants += new_prime_implicants
+        for new_prime_implicant in new_prime_implicants:
+            if not any(
+                prime_implicant == new_prime_implicant
+                for prime_implicant in prime_implicants
+            ):
+                prime_implicants.append(new_prime_implicant)
 
     essential_prime_implicants = get_essential_prime_implicants(
-        prime_implicants, implicants_n=implicants_n
+        table=table,
+        output_column_index=output_column_index,
+        implicants=prime_implicants,
     )
+
+    try:
+        check_solution(
+            table=table,
+            output_column_index=output_column_index,
+            implicants=essential_prime_implicants,
+        )
+    except ValueError as err:
+        raise RuntimeError from err
 
     input_names = [
         name
@@ -221,7 +238,7 @@ def get_sorted_implicants_and_group_ranges(
 
     n = max(number_of_1s_implicants_map.keys())
     group_range_start = 0
-    for i in range(1, n + 1):
+    for i in range(0, n + 1):
         if i in number_of_1s_implicants_map:
             implicants = number_of_1s_implicants_map[i]
 
@@ -287,24 +304,50 @@ def get_combined_implicants_and_prime_implicants(
 
 
 def get_essential_prime_implicants(
-    implicants: list[Implicant], implicants_n: int
+    table: TTable,
+    output_column_index: int,
+    implicants: list[Implicant],
+    # implicants_n: int
 ) -> list[Implicant]:
-    essential_prime_implicants: list[Implicant] = []
-
-    chart = get_prime_implicants_chart(implicants, implicants_n)
-
-    for column_index in range(implicants_n):
-        implicant_index = None
-        for row_index in range(len(implicants)):
-            if chart[row_index][column_index] == 1:
-                if implicant_index is None:
-                    implicant_index = row_index
-                else:
-                    break  # type: ignore
+    essential_implicants = implicants
+    for n in range(len(implicants) - 1, -1, -1):
+        for implicants_combination in itertools.combinations(implicants, n):
+            try:
+                check_solution(
+                    table=table,
+                    output_column_index=output_column_index,
+                    implicants=list(implicants_combination),
+                )
+                essential_implicants = list(implicants_combination)
+                break
+            except ValueError:
+                pass
         else:
-            essential_prime_implicants.append(implicants[cast(int, implicant_index)])
+            break
 
-    return essential_prime_implicants
+    return essential_implicants
+
+    # TODO: Use chart and Patrick method!
+    #
+    # essential_prime_implicants: list[Implicant] = []
+    #
+    # chart = get_prime_implicants_chart(implicants, implicants_n)
+    #
+    # for column_index in range(implicants_n):
+    #     implicant_index = None
+    #     for row_index in range(len(implicants)):
+    #         if chart[row_index][column_index] == 1:
+    #             if implicant_index is None:
+    #                 implicant_index = row_index
+    #             else:
+    #                 break  # type: ignore
+    #     else:
+    #         if implicant_index is not None:
+    #             new_implicant = implicants[cast(int, implicant_index)]
+    #             if not any(implicant == new_implicant for implicant in essential_prime_implicants):
+    #                 essential_prime_implicants.append(new_implicant)
+    #
+    # return essential_prime_implicants
 
 
 def get_prime_implicants_chart(
@@ -317,6 +360,37 @@ def get_prime_implicants_chart(
             chart[row_index][minterm] = 1
 
     return chart
+
+
+def check_solution(
+    table: TTable, output_column_index: int, implicants: list[Implicant]
+) -> None:
+    def func(inputs: list[str]) -> bool:
+        return any(
+            all(
+                int(inputs[i]) == int(implicant[i])
+                for i in range(len(implicant))
+                if implicant[i] != "-"
+            )
+            for implicant in implicants
+        )
+
+    for row in table[1:]:
+        inputs = [
+            cell
+            for column_index, cell in enumerate(row)
+            if column_index != output_column_index
+        ]
+        expected_output = row[output_column_index]
+        output = func(inputs)
+
+        if (expected_output, output) not in {
+            ("1", True),
+            ("X", True),
+            ("0", False),
+            ("X", False),
+        }:
+            raise ValueError("Solution is incorrect!")
 
 
 def render(
@@ -337,7 +411,7 @@ def render_latex(
     implicants: list[Implicant], inputs_names: list[str], output_name: str
 ) -> str:
     def resolve_negation(s: str) -> str:
-        return re.sub(r"(.+)(^|_)?(.*)?", r"\\overline{\1}\2\3", s)
+        return re.sub(r"([a-zA-Z])(\^|_)?(.*)?", r"\\overline{\1}\2\3", s)
 
     return _render(
         implicants=implicants,
