@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "py-quine-mccluskey-solver"
+version = "0.1.0"
+description = "Truth table solver based on Quine McCluskey algorithm."
+authors = ["0scarB <oscarb@protonmail.com>"]
+license = "GNU GPLv3"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+
+[tool.poetry.dev-dependencies]
+black = "^21.5b0"
+mypi = "^0.0.3"
+pre-commit = "^2.12.1"
+pytest = "^6.2.4"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
